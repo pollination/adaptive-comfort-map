@@ -4,11 +4,12 @@ from typing import Dict, List
 
 # pollination plugins and recipes
 from pollination.ladybug.translate import EpwToWea
-from pollination.ladybug_comfort.map import AdaptiveMap, MapResultInfo
+from pollination.ladybug_comfort.map import AdaptiveMap, MapResultInfo, Tcp
 from pollination.honeybee_radiance.translate import CreateRadiantEnclosureInfo
 from pollination.honeybee_radiance.edit import MirrorModelSensorGrids
 from pollination.honeybee_energy.settings import SimParComfort
 from pollination.honeybee_energy.simulate import SimulateModel
+from pollination.honeybee_energy.translate import ModelOccSchedules
 from pollination.lbt_honeybee.edit import ModelModifiersFromConstructions
 from pollination.annual_radiation.entry import AnnualRadiationEntryPoint
 
@@ -17,6 +18,7 @@ from pollination.alias.inputs.model import hbjson_model_input
 from pollination.alias.inputs.ddy import ddy_input
 from pollination.alias.inputs.data import value_or_data
 from pollination.alias.inputs.north import north_input
+from pollination.alias.outputs.comfort import comfort_percent_output
 
 
 @dataclass
@@ -117,7 +119,27 @@ class AdaptiveComfortMapEntryPoint(DAG):
             },
             {
                 'from': CreateRadiantEnclosureInfo()._outputs.enclosure_list_file,
-                'to': 'results/grids_info.json'
+                'to': 'results/temperature/grids_info.json'
+            },
+            {
+                'from': CreateRadiantEnclosureInfo()._outputs.enclosure_list_file,
+                'to': 'results/condition/grids_info.json'
+            },
+            {
+                'from': CreateRadiantEnclosureInfo()._outputs.enclosure_list_file,
+                'to': 'results/condition_intensity/grids_info.json'
+            },
+            {
+                'from': CreateRadiantEnclosureInfo()._outputs.enclosure_list_file,
+                'to': 'metrics/TCP/grids_info.json'
+            },
+            {
+                'from': CreateRadiantEnclosureInfo()._outputs.enclosure_list_file,
+                'to': 'metrics/HSP/grids_info.json'
+            },
+            {
+                'from': CreateRadiantEnclosureInfo()._outputs.enclosure_list_file,
+                'to': 'metrics/CSP/grids_info.json'
             },
             {
                 'from': CreateRadiantEnclosureInfo()._outputs.enclosure_list,
@@ -160,10 +182,10 @@ class AdaptiveComfortMapEntryPoint(DAG):
         loop=get_enclosure_info._outputs.enclosure_list,
         sub_folder='results',  # create a subfolder for each grid
         sub_paths={
-            'enclosure_info': '{{item.id}}.json',  # sub_path for enclosure_info arg
-            'total_irradiance': '{{item.id}}.ill',  # sub_path for total irradiance arg
-            'direct_irradiance': '{{item.id}}.ill',  # sub_path for total direct_irradiance arg
-            'ref_irradiance': '{{item.id}}_ref.ill',  # sub_path for reflected irradiance arg
+            'enclosure_info': '{{item.id}}.json',
+            'total_irradiance': '{{item.id}}.ill',
+            'direct_irradiance': '{{item.id}}.ill',
+            'ref_irradiance': '{{item.id}}_ref.ill',
             'sun_up_hours': 'sun-up-hours.txt'
         }
     )
@@ -197,8 +219,48 @@ class AdaptiveComfortMapEntryPoint(DAG):
         self, comfort_model='adaptive', run_period=run_period
     ) -> List[Dict]:
         return [
-            {'from': MapResultInfo()._outputs.results_info_file,
-             'to': 'results/results_info.json'}
+            {
+                'from': MapResultInfo()._outputs.temperature_info,
+                'to': 'results/temperature/results_info.json'
+            },
+            {
+                'from': MapResultInfo()._outputs.condition_info,
+                'to': 'results/condition/results_info.json'
+            },
+            {
+                'from': MapResultInfo()._outputs.condition_intensity_info,
+                'to': 'results/condition_intensity/results_info.json'
+            }
+        ]
+
+    @task(template=ModelOccSchedules)
+    def create_model_occ_schedules(
+        self, model=model, period=run_period
+    ) -> List[Dict]:
+        return [
+            {'from': ModelOccSchedules()._outputs.occ_schedule_json,
+             'to': 'metrics/occupancy_schedules.json'}
+        ]
+
+    @task(
+        template=Tcp,
+        needs=[create_model_occ_schedules, get_enclosure_info, run_comfort_map],
+        loop=get_enclosure_info._outputs.enclosure_list,
+        sub_folder='metrics',  # create a subfolder for the whole simulation
+        sub_paths={
+            'condition_csv': '{{item.id}}.csv',
+            'enclosure_info': '{{item.id}}.json'
+        }
+    )
+    def compute_tcp(
+        self, condition_csv='results/condition',
+        enclosure_info=get_enclosure_info._outputs.output_folder,
+        occ_schedule_json=create_model_occ_schedules._outputs.occ_schedule_json
+    ) -> List[Dict]:
+        return [
+            {'from': Tcp()._outputs.tcp, 'to': 'TCP/{{item.id}}.csv'},
+            {'from': Tcp()._outputs.hsp, 'to': 'HSP/{{item.id}}.csv'},
+            {'from': Tcp()._outputs.csp, 'to': 'CSP/{{item.id}}.csv'}
         ]
 
     # outputs
@@ -219,9 +281,29 @@ class AdaptiveComfortMapEntryPoint(DAG):
         '(comfortable) conditions.'
     )
 
-    condition_intensity = Outputs.folder(
+    degrees_from_neutral = Outputs.folder(
         source='results/condition_intensity', description='A folder containing CSV maps '
         'of the degrees Celsius from the adaptive comfort neutral temperature for each '
         'sensor grid. This can be used to understand not just whether conditions are '
         'acceptable but how uncomfortably hot or cold they are.'
+    )
+
+    tcp = Outputs.folder(
+        source='metrics/TCP', description='A folder containing CSV values for Thermal '
+        'Comfort Percent (TCP). TCP is the percentage of occupied time where '
+        'thermal conditions are acceptable/comfortable.', alias=comfort_percent_output
+    )
+
+    hsp = Outputs.folder(
+        source='metrics/HSP', description='A folder containing CSV values for Heat '
+        'Sensation Percent (HSP). HSP is the percentage of occupied time where '
+        'thermal conditions are hotter than what is considered acceptable/comfortable.',
+        alias=comfort_percent_output
+    )
+
+    csp = Outputs.folder(
+        source='metrics/CSP', description='A folder containing CSV values for Cold '
+        'Sensation Percent (CSP). CSP is the percentage of occupied time where '
+        'thermal conditions are colder than what is considered acceptable/comfortable.',
+        alias=comfort_percent_output
     )
