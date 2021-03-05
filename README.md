@@ -17,6 +17,6 @@ energy properties of the model geometry are what determine the outcome of the
 simulation and the model's SensorGrids are what determine where the comfort
 mapping occurs.
 
-To determine Thermal Comfort Percent (TCP) the occupancy schedules of the energy
+To determine Thermal Comfort Percent (TCP), the occupancy schedules of the energy
 model are used. Any hour of the occupancy schedule that is 0.1 or greater will be
 considered occupied. All hours of the outdoor are considered occupied.
