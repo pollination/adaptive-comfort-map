@@ -74,10 +74,10 @@ class ComfortMappingEntryPoint(DAG):
         'the simulation will be annual.', default=''
     )
 
-    air_speed = Inputs.str(
-        description='A single number for air speed in m/s or a string of a JSON array '
-        'with numbers that align with the result-sql reporting period. This '
-        'will be used for all indoor comfort evaluation.', default='0.1'
+    air_speed = Inputs.file(
+        description='A CSV file containing a single number for air speed in m/s or '
+        'several rows of air speeds that align with the length of the run period.',
+        optional=True
     )
 
     prevailing = Inputs.file(
