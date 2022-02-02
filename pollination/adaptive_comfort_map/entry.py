@@ -92,11 +92,11 @@ class AdaptiveComfortMapEntryPoint(DAG):
         alias=min_sensor_count_input
     )
 
-    air_speed = Inputs.str(
-        description='A single number for air speed in m/s or a string of a JSON array '
-        'with numbers that align with run period. This will be used for all indoor '
-        'comfort evaluation.', default='0.1',
-        alias=air_speed_input
+    air_speed = Inputs.file(
+        description='A CSV file containing a single number for air speed in m/s or '
+        'several rows of air speeds that align with the length of the run period. This '
+        'will be used for all indoor comfort evaluation.', extensions=['txt', 'csv'],
+        optional=True, alias=air_speed_input
     )
 
     solarcal_parameters = Inputs.str(
