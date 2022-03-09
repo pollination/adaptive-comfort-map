@@ -1,4 +1,4 @@
-from pollination_dsl.dag import Inputs, DAG, task, Outputs
+from pollination_dsl.dag import Inputs, DAG, task
 from dataclasses import dataclass
 from typing import Dict, List
 
@@ -26,7 +26,7 @@ class ComfortMappingEntryPoint(DAG):
     grid_name = Inputs.str(
         description='Sensor grid file name (used to name the final result files).'
     )
-    
+
     enclosure_info = Inputs.file(
         description='A JSON file containing information about the radiant '
         'enclosure that sensor points belong to.',
@@ -61,6 +61,15 @@ class ComfortMappingEntryPoint(DAG):
     sun_up_hours = Inputs.file(
         description='A sun-up-hours.txt file output by Radiance and aligns with the '
         'input irradiance files.'
+    )
+
+    contributions = Inputs.folder(
+        description='An optional folder containing sub-folders of irradiance '
+        'contributions from dynamic aperture groups. There should be one sub-folder '
+        'per window group and each one should contain three .ill files named '
+        'direct.ill, indirect.ill and reflected.ill. If specified, these will be '
+        'added to the irradiance inputs before computing shortwave MRT deltas.',
+        optional=True
     )
 
     occ_schedules = Inputs.file(
@@ -122,6 +131,7 @@ class ComfortMappingEntryPoint(DAG):
         direct_irradiance=direct_irradiance,
         ref_irradiance=ref_irradiance,
         sun_up_hours=sun_up_hours,
+        contributions=contributions,
         solarcal_par=solarcal_parameters,
         run_period=run_period,
         name=grid_name
