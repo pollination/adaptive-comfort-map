@@ -478,7 +478,7 @@ class AdaptiveComfortMapEntryPoint(DAG):
         octree_file_diff=create_dynamic_octrees._outputs.scene_folder,
         octree_file_with_suns=create_dynamic_octrees._outputs.scene_folder,
         group_name='{{item.identifier}}',
-        sensor_grid_folder=split_grid_folder._outputs.output_folder,
+        sensor_grid_folder='radiance/shortwave/grids',
         sensor_grids=split_grid_folder._outputs.sensor_grids_file,
         sky_dome=create_sky_dome._outputs.sky_dome,
         sky_matrix=create_total_sky._outputs.sky_matrix,
