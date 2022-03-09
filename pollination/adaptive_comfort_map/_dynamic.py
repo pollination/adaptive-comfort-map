@@ -5,7 +5,6 @@ from typing import Dict, List
 from pollination.path.read import ReadJSONList
 
 from ._radcontrib import RadianceContribEntryPoint
-from ._dynbehavior import DynamicBehaviorEntryPoint
 
 
 @dataclass
@@ -86,7 +85,10 @@ class DynamicContributionEntryPoint(DAG):
         needs=[read_grids],
         loop=read_grids._outputs.data,
         sub_folder='shortwave',
-        sub_paths={'sensor_grid': '{{item.full_id}}.pts'}
+        sub_paths={
+            'sensor_grid': '{{item.full_id}}.pts',
+            'ref_sensor_grid': '{{item.full_id}}_ref.pts',
+        }
     )
     def run_radiance_window_contrib(
         self,
@@ -97,37 +99,13 @@ class DynamicContributionEntryPoint(DAG):
         group_name=group_name,
         grid_name='{{item.full_id}}',
         sensor_grid=sensor_grid_folder,
+        ref_sensor_grid=sensor_grid_folder,
         sensor_count='{{item.count}}',
         sky_dome=sky_dome,
         sky_matrix=sky_matrix,
         sky_matrix_direct=sky_matrix,
-        sun_modifiers=sun_modifiers
-    ) -> List[Dict]:
-        pass
-
-    @task(
-        template=DynamicBehaviorEntryPoint,
-        needs=[read_grids, run_radiance_window_contrib],
-        loop=read_grids._outputs.data,
-        sub_folder='shortwave',
-        sub_paths={
-            'direct_specular': '{{item.full_id}}.ill',
-            'indirect_specular': '{{item.full_id}}.ill',
-            'ref_specular': '{{item.full_id}}.ill',
-            'indirect_diffuse': '{{item.full_id}}.ill',
-            'ref_diffuse': '{{item.full_id}}.ill'
-        }
-    )
-    def run_dynamic_behavior_contrib(
-        self,
+        sun_modifiers=sun_modifiers,
         result_sql=result_sql,
-        direct_specular='shortwave/dynamic/initial/{{self.aperture_id}}/direct_spec',
-        indirect_specular='shortwave/dynamic/initial/{{self.aperture_id}}/indirect_spec',
-        ref_specular='shortwave/dynamic/initial/{{self.aperture_id}}/reflected_spec',
-        indirect_diffuse='shortwave/dynamic/initial/{{self.aperture_id}}/total_diff',
-        ref_diffuse='shortwave/dynamic/initial/{{self.aperture_id}}/reflected_diff',
-        sun_up_hours=sun_up_hours,
-        aperture_id=group_name,
-        grid_name='{{item.full_id}}'
+        sun_up_hours=sun_up_hours
     ) -> List[Dict]:
         pass
