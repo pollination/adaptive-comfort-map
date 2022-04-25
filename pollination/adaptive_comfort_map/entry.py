@@ -8,12 +8,13 @@ from pollination.lbt_honeybee.edit import ModelModifiersFromConstructions
 
 from pollination.honeybee_energy.settings import SimParComfort, DynamicOutputs
 from pollination.honeybee_energy.simulate import SimulateModel
-from pollination.honeybee_energy.translate import ModelOccSchedules
+from pollination.honeybee_energy.translate import ModelOccSchedules, \
+    ModelTransSchedules
 
 from pollination.honeybee_radiance.sun import CreateSunMatrix, ParseSunUpHours
 from pollination.honeybee_radiance.translate import CreateRadianceFolderGrid
 from pollination.honeybee_radiance.octree import CreateOctree, CreateOctreeWithSky, \
-    CreateOctreeAbstractedGroups
+    CreateOctreeAbstractedGroups, CreateOctreeShadeTransmittance
 from pollination.honeybee_radiance.sky import CreateSkyDome, CreateSkyMatrix
 from pollination.honeybee_radiance.grid import SplitGridFolder, MergeFolderData
 from pollination.honeybee_radiance.viewfactor import ViewFactorModifiers
@@ -38,6 +39,7 @@ from pollination.alias.outputs.comfort import tcp_output, hsp_output, csp_output
 
 from ._radiance import RadianceMappingEntryPoint
 from ._dynamic import DynamicContributionEntryPoint
+from ._dynshade import DynamicShadeContribEntryPoint
 from ._comfort import ComfortMappingEntryPoint
 
 
@@ -388,6 +390,35 @@ class AdaptiveComfortMapEntryPoint(DAG):
             }
         ]
 
+    @task(
+        template=CreateOctreeShadeTransmittance,
+        needs=[generate_sunpath, create_rad_folder]
+    )
+    def create_shade_trans_octrees(
+        self, model=create_rad_folder._outputs.model_folder,
+        sunpath=generate_sunpath._outputs.sunpath
+    ):
+        """Create a set of octrees for each dynamic shade."""
+        return [
+            {
+                'from': CreateOctreeShadeTransmittance()._outputs.scene_folder,
+                'to': 'radiance/shortwave/resources/dynamic_shades'
+            },
+            {
+                'from': CreateOctreeShadeTransmittance()._outputs.scene_info,
+                'description': 'List of octrees to iterate over.'
+            }
+        ]
+
+    @task(template=ModelTransSchedules)
+    def create_model_trans_schedules(self, model=model, period=run_period) -> List[Dict]:
+        return [
+            {
+                'from': ModelTransSchedules()._outputs.trans_schedule_json,
+                'to': 'radiance/shortwave/resources/trans_schedules.json'
+            }
+        ]
+
     @task(template=ViewFactorModifiers)
     def create_view_factor_modifiers(
         self, model=model, include_sky='include', include_ground='include',
@@ -456,11 +487,42 @@ class AdaptiveComfortMapEntryPoint(DAG):
         pass
 
     @task(
+        template=DynamicShadeContribEntryPoint,
+        needs=[
+            create_sky_dome, generate_sunpath, parse_sun_up_hours,
+            create_total_sky, create_direct_sky,
+            split_grid_folder, create_shade_trans_octrees, run_radiance_simulation
+        ],
+        loop=create_shade_trans_octrees._outputs.scene_info,
+        sub_folder='radiance',
+        sub_paths={
+            'octree_file': '{{item.default}}',
+            'octree_file_with_suns': '{{item.sun}}'
+        }
+    )
+    def run_radiance_shade_contribution(
+        self,
+        radiance_parameters=radiance_parameters,
+        octree_file=create_shade_trans_octrees._outputs.scene_folder,
+        octree_file_with_suns=create_shade_trans_octrees._outputs.scene_folder,
+        group_name='{{item.identifier}}',
+        sensor_grid_folder='radiance/shortwave/grids',
+        sensor_grids=split_grid_folder._outputs.sensor_grids_file,
+        sky_dome=create_sky_dome._outputs.sky_dome,
+        sky_matrix=create_total_sky._outputs.sky_matrix,
+        sky_matrix_direct=create_direct_sky._outputs.sky_matrix,
+        sun_modifiers=generate_sunpath._outputs.sun_modifiers,
+        sun_up_hours=parse_sun_up_hours._outputs.sun_up_hours
+    ) -> List[Dict]:
+        pass
+
+    @task(
         template=DynamicContributionEntryPoint,
         needs=[
             create_sky_dome, generate_sunpath, parse_sun_up_hours,
             create_total_sky, create_direct_sky,
-            split_grid_folder, create_dynamic_octrees, run_energy_simulation
+            split_grid_folder, create_dynamic_octrees,
+            run_energy_simulation, run_radiance_simulation
         ],
         loop=create_dynamic_octrees._outputs.scene_info,
         sub_folder='radiance',
@@ -491,10 +553,10 @@ class AdaptiveComfortMapEntryPoint(DAG):
     @task(
         template=ComfortMappingEntryPoint,
         needs=[
-            parse_sun_up_hours, get_prevailing_temperature,
-            create_view_factor_modifiers, create_model_occ_schedules,
+            parse_sun_up_hours, get_prevailing_temperature, create_view_factor_modifiers,
+            create_model_occ_schedules, create_model_trans_schedules,
             run_energy_simulation, run_radiance_simulation, split_grid_folder,
-            run_radiance_dynamic_contribution
+            run_radiance_dynamic_contribution, run_radiance_shade_contribution
         ],
         loop=split_grid_folder._outputs.sensor_grids,
         sub_folder='initial_results',
@@ -519,6 +581,8 @@ class AdaptiveComfortMapEntryPoint(DAG):
         ref_irradiance='radiance/shortwave/results/reflected',
         sun_up_hours=parse_sun_up_hours._outputs.sun_up_hours,
         contributions='radiance/shortwave/dynamic/final/{{item.full_id}}',
+        transmittance_contribs='radiance/shortwave/shd_trans/final/{{item.full_id}}',
+        trans_schedules=create_model_trans_schedules._outputs.trans_schedule_json,
         occ_schedules=create_model_occ_schedules._outputs.occ_schedule_json,
         run_period=run_period,
         air_speed=air_speed,

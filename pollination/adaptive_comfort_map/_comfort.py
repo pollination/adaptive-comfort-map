@@ -72,6 +72,20 @@ class ComfortMappingEntryPoint(DAG):
         optional=True
     )
 
+    transmittance_contribs = Inputs.folder(
+        description='An optional folder containing a transmittance schedule JSON '
+        'and sub-folders of irradiance results that exclude the shade from the '
+        'calculation. There should be one sub-folder per window groups and each '
+        'one should contain three .ill files named direct.ill, indirect.ill and '
+        'reflected.ill. If specified, these will be added to the irradiance inputs '
+        'before computing shortwave MRT deltas.', optional=True
+    )
+
+    trans_schedules = Inputs.file(
+        description='A schedule JSON that contains fractional schedule values '
+        'for each shade transmittance schedule in the model.'
+    )
+
     occ_schedules = Inputs.file(
         description='A JSON file containing occupancy schedules derived from '
         'the input model.'
@@ -132,6 +146,8 @@ class ComfortMappingEntryPoint(DAG):
         ref_irradiance=ref_irradiance,
         sun_up_hours=sun_up_hours,
         contributions=contributions,
+        transmittance_contribs=transmittance_contribs,
+        trans_schedules=trans_schedules,
         solarcal_par=solarcal_parameters,
         run_period=run_period,
         name=grid_name
