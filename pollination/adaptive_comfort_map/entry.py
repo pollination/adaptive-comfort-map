@@ -588,7 +588,7 @@ class AdaptiveComfortMapEntryPoint(DAG):
         air_speed=air_speed,
         prevailing=get_prevailing_temperature._outputs.prevailing_temperature,
         solarcal_par=solarcal_parameters,
-        comfort_par=comfort_parameters
+        comfort_parameters=comfort_parameters
     ) -> List[Dict]:
         pass
 
