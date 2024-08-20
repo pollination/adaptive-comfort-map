@@ -2,8 +2,6 @@ from pollination_dsl.dag import Inputs, DAG, task
 from dataclasses import dataclass
 from typing import Dict, List
 
-from pollination.path.read import ReadJSONList
-
 from ._radcontrib import RadianceContribEntryPoint
 
 
@@ -46,7 +44,7 @@ class DynamicContributionEntryPoint(DAG):
         description='A folder containing all of the split sensor grids in the model.'
     )
 
-    sensor_grids = Inputs.file(
+    sensor_grids = Inputs.list(
         description='A JSON file with information about sensor grids to loop over.'
     )
 
@@ -71,19 +69,9 @@ class DynamicContributionEntryPoint(DAG):
         'input irradiance files.'
     )
 
-    @task(template=ReadJSONList)
-    def read_grids(self, src=sensor_grids) -> List[Dict]:
-        return [
-            {
-                'from': ReadJSONList()._outputs.data,
-                'description': 'Sensor grids information.'
-            }
-        ]
-
     @task(
         template=RadianceContribEntryPoint,
-        needs=[read_grids],
-        loop=read_grids._outputs.data,
+        loop=sensor_grids,
         sub_folder='shortwave',
         sub_paths={
             'sensor_grid': '{{item.full_id}}.pts',
@@ -108,4 +96,9 @@ class DynamicContributionEntryPoint(DAG):
         result_sql=result_sql,
         sun_up_hours=sun_up_hours
     ) -> List[Dict]:
-        pass
+        return [
+            {
+                'from': RadianceContribEntryPoint()._outputs.dynamic_results,
+                'to': 'radiance/shortwave/dynamic/final'
+            }
+        ]
