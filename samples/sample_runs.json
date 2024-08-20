@@ -1,0 +1,10 @@
+[
+    {
+        "artifacts": {
+            "model": "artifacts/sample_model_grid.hbjson",
+            "epw": "artifacts/USA_MA_Boston-Logan.Intl.AP.725090_TMY3.epw",
+            "ddy": "artifacts/USA_MA_Boston-Logan.Intl.AP.725090_TMY3.ddy"
+        },
+        "inputs": {}
+    }
+]
