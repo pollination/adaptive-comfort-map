@@ -1,16 +1,15 @@
-from pollination_dsl.dag import Inputs, DAG, task
+from pollination_dsl.dag import Inputs, GroupedDAG, task, Outputs
 from dataclasses import dataclass
 
 from pollination.honeybee_radiance.grid import MirrorGrid, RadiantEnclosureInfo
-from pollination.honeybee_radiance.viewfactor import SphericalViewFactorContribution
 from pollination.honeybee_radiance.contrib import DaylightContribution
 from pollination.honeybee_radiance.coefficient import DaylightCoefficient
 from pollination.honeybee_radiance.sky import SubtractSkyMatrix
 
 
 @dataclass
-class RadianceMappingEntryPoint(DAG):
-    """Entry point for Radiance calculations for comfort mapping."""
+class RadianceMappingEntryPoint(GroupedDAG):
+    """Entry point for Radiance calculations for adaptive-comfort-mapping."""
 
     # inputs
     radiance_parameters = Inputs.str(
@@ -30,11 +29,6 @@ class RadianceMappingEntryPoint(DAG):
 
     octree_file = Inputs.file(
         description='A Radiance octree file with a sky dome.',
-        extensions=['oct']
-    )
-
-    octree_file_view_factor = Inputs.file(
-        description='A Radiance octree file with surface view factor modifiers.',
         extensions=['oct']
     )
 
@@ -67,33 +61,12 @@ class RadianceMappingEntryPoint(DAG):
         description='A file with sun modifiers.'
     )
 
-    view_factor_modifiers = Inputs.file(
-        description='A file with surface modifiers.'
-    )
-
     @task(template=RadiantEnclosureInfo)
     def get_enclosure_info(self, model=model, input_grid=sensor_grid, name=grid_name):
         return [
             {
                 'from': RadiantEnclosureInfo()._outputs.enclosure_file,
                 'to': 'enclosures/{{self.name}}.json'
-            }
-        ]
-
-    @task(template=SphericalViewFactorContribution)
-    def compute_spherical_view_factors(
-        self,
-        name=grid_name,
-        radiance_parameters=radiance_parameters,
-        fixed_radiance_parameters='-aa 0.0 -I -ab 1 -c 1 -faf',
-        modifiers=view_factor_modifiers,
-        sensor_grid=sensor_grid,
-        scene_file=octree_file_view_factor
-    ):
-        return [
-            {
-                'from': SphericalViewFactorContribution()._outputs.view_factor_file,
-                'to': 'longwave/view_factors/{{self.name}}.csv'
             }
         ]
 
@@ -120,8 +93,8 @@ class RadianceMappingEntryPoint(DAG):
         modifiers=sun_modifiers,
         sensor_grid=mirror_the_grid._outputs.base_file,
         conversion='0.265 0.670 0.065',
-        output_format='a',  # make it ascii so we expose the file as a separate output
-        header='remove',  # remove header to make it process-able later
+        output_format='f',
+        header='keep',
         scene_file=octree_file_with_suns
     ):
         return [
@@ -196,8 +169,8 @@ class RadianceMappingEntryPoint(DAG):
         sky_dome=sky_dome,
         sensor_grid=mirror_the_grid._outputs.mirrored_file,
         conversion='0.265 0.670 0.065',  # divide by 179
-        output_format='a',  # make it ascii so we expose the file as a separate output
-        header='remove',  # remove header to make it process-able later
+        output_format='f',
+        header='keep',
         scene_file=octree_file
     ):
         return [
@@ -206,3 +179,9 @@ class RadianceMappingEntryPoint(DAG):
                 'to': 'shortwave/results/reflected/{{self.name}}.ill'
             }
         ]
+
+    enclosures = Outputs.folder(source='enclosures')
+
+    shortwave_results = Outputs.folder(source='shortwave/results')
+
+    shortwave_grids = Outputs.folder(source='shortwave/grids')
